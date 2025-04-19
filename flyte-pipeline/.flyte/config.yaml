@@ -1,0 +1,10 @@
+admin:
+  endpoint: a731fdae73a5a4a7fb7fa5ed14fd2aca-762194491.us-east-2.elb.amazonaws.com:81
+  insecure: true
+storage:
+  connection:
+    region: us-east-2
+    endpoint: https://s3.us-east-2.amazonaws.com
+    access-key: ""
+    secret-key: ""
+  type: s3
