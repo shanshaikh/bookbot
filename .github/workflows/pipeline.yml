@@ -1,0 +1,65 @@
+name: Flyte  CI/CD
+
+on:
+  push:
+    branches: [ "flyte" ]
+
+env:
+  AWS_REGION: us-east-2                  # set this to your preferred AWS region, e.g. us-west-1
+  ECR_REPOSITORY: flyte/flyte-repo           # set this to your Amazon ECR repository name
+  EKS_CLUSTER: flyte-cluster                 # set this to your Amazon ECS cluster name
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v1
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v1
+
+    - name: Build, tag, and push image to Amazon ECR
+      id: build-image
+      working-directory: flyte-pipeline
+      env:
+        ECR_REGISTRY: 712414434340.dkr.ecr.us-east-2.amazonaws.com
+        IMAGE_TAG: latest
+      run: |
+        # Build a docker container and
+        # push it to ECR so that it can
+        # be deployed to EKS.
+        docker buildx build --platform linux/amd64 -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG . --push
+        echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+    - name: Install dependencies
+      working-directory: flyte-pipeline
+      run: |
+        python3 -m venv venv
+        source venv/bin/activate
+        pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Register image with pyflyte
+      working-directory: flyte-pipeline
+      run: |
+        pyflyte register --image ${{ steps.build-image.outputs.image }} temp.py
+
+    - name: Run workflow with pyflyte on cluster
+      working-directory: flyte-pipeline
+      run: |
+        pyflyte run --remote --image ${{ steps.build-image.outputs.image }} temp.py training_workflow
